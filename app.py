@@ -1,47 +1,56 @@
+
+import os
+import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import joblib
 import nltk
-import os
 
-# Download NLTK tokenizer if needed
-nltk.download('punkt')
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+
+# Download NLTK data quietly if not already downloaded
+nltk.download('punkt', quiet=True)
+
+# Load model and vectorizer paths from environment variables for flexibility
+MODEL_PATH = os.getenv('MODEL_PATH', 'model.pkl')
+VECTORIZER_PATH = os.getenv('VECTORIZER_PATH', 'vectorizer.pkl')
+
+if not os.path.exists(MODEL_PATH) or not os.path.exists(VECTORIZER_PATH):
+    logging.error("Model or vectorizer file not found. Please ensure they are present.")
+    raise FileNotFoundError("Model or vectorizer file not found. Please ensure they are present.")
 
 # Load model and vectorizer
-model_path = 'model.pkl'
-vectorizer_path = 'vectorizer.pkl'
+classifier = joblib.load(MODEL_PATH)
+vectorizer = joblib.load(VECTORIZER_PATH)
 
-if not os.path.exists(model_path) or not os.path.exists(vectorizer_path):
-    raise FileNotFoundError("Trained model or vectorizer not found. Please run train_model.py first.")
+def preprocess(text: str) -> str:
+    tokens = nltk.word_tokenize(text.lower())
+    return ' '.join(tokens)
 
-classifier = joblib.load(model_path)
-vectorizer = joblib.load(vectorizer_path)
-
-# Preprocess function
-def pre(text):
-    words = nltk.word_tokenize(text.lower())
-    return ' '.join(words)
-
-# Set up Flask app
 app = Flask(__name__)
-CORS(app)
+CORS(app)  # In production, restrict origins with CORS(app, resources={r"/chat": {"origins": "yourdomain.com"}})
 
-@app.route('/', methods=['POST'])
+@app.route('/chat', methods=['POST'])
 def chat():
     try:
-        data = request.json
+        data = request.get_json(force=True)
         user_input = data.get('message', '').strip()
 
         if not user_input:
             return jsonify({"response": "Please type something!"}), 400
 
-        processed_input = pre(user_input)
+        processed_input = preprocess(user_input)
         input_vector = vectorizer.transform([processed_input])
-        response = classifier.predict(input_vector)[0]
+        prediction = classifier.predict(input_vector)
+        response = prediction[0]
 
         return jsonify({"response": response})
-    except Exception as e:
-        return jsonify({"response": f"An error occurred: {str(e)}"}), 500
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5505)
+    except Exception as e:
+        logging.exception("Error during request processing:")
+        return jsonify({"response": "An internal error occurred. Please try again later."}), 500
+
+if __name__ == "__main__":
+    # Production servers like gunicorn should be used instead of Flask dev server
+    app.run(debug=True)
