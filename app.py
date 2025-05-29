@@ -1,4 +1,3 @@
-
 import os
 import logging
 from flask import Flask, request, jsonify
@@ -29,7 +28,7 @@ def preprocess(text: str) -> str:
     return ' '.join(tokens)
 
 app = Flask(__name__)
-CORS(app)  # In production, restrict origins with CORS(app, resources={r"/chat": {"origins": "yourdomain.com"}})
+CORS(app)  # You should restrict CORS origins in production
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -47,10 +46,10 @@ def chat():
 
         return jsonify({"response": response})
 
-    except Exception as e:
+    except Exception:
         logging.exception("Error during request processing:")
         return jsonify({"response": "An internal error occurred. Please try again later."}), 500
 
 if __name__ == "__main__":
-    # Production servers like gunicorn should be used instead of Flask dev server
-    app.run(debug=True)
+    # In production, use gunicorn or another WSGI server instead of Flask's built-in server
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5505)), debug=False)
